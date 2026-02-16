@@ -303,11 +303,12 @@ function computeMetrics(orders) {
   const customerSpend = new Map();
   for (const o of dedupedOrders) {
     if (!customerSpend.has(o.customerId)) {
-      customerSpend.set(o.customerId, { total: 0, count: 0 });
+      customerSpend.set(o.customerId, { total: 0, count: 0, maxIndex: 0 });
     }
     const cs = customerSpend.get(o.customerId);
     cs.total += o.totalSales;
     cs.count += 1;
+    if (o.orderIndex > cs.maxIndex) cs.maxIndex = o.orderIndex;
   }
 
   const totalRevenue = dedupedOrders.reduce((s, o) => s + o.totalSales, 0);
@@ -364,13 +365,41 @@ function computeMetrics(orders) {
     pct: totalCustomers > 0 ? round1(ltvBucketCounts[i] / totalCustomers * 100) : 0,
   }));
 
+  // Customer groups by lifetime spend
+  function getSpendBucket(total) {
+    if (total <= 25) return 0;
+    if (total <= 50) return 1;
+    if (total <= 100) return 2;
+    if (total <= 200) return 3;
+    return 4;
+  }
+  const spendLabels = ['€0–25', '€25–50', '€50–100', '€100–200', '€200+'];
+  const spendCounts = [0, 0, 0, 0, 0];
+  for (const [, cs] of customerSpend) { spendCounts[getSpendBucket(cs.total)]++; }
+  const spendGroups = spendLabels.map((bucket, i) => ({
+    bucket, count: spendCounts[i],
+    pct: totalCustomers > 0 ? round1(spendCounts[i] / totalCustomers * 100) : 0,
+  }));
+
+  // Customer groups by order count (using Shopify lifetime order index)
+  const orderLabels = ['1 obj.', '2 obj.', '3 obj.', '4 obj.', '5+ obj.'];
+  const orderCounts = [0, 0, 0, 0, 0];
+  for (const [, cs] of customerSpend) {
+    const idx = Math.min(cs.maxIndex, 5) - 1;
+    orderCounts[idx]++;
+  }
+  const orderGroups = orderLabels.map((bucket, i) => ({
+    bucket, count: orderCounts[i],
+    pct: totalCustomers > 0 ? round1(orderCounts[i] / totalCustomers * 100) : 0,
+  }));
+
   return {
     totalCustomers, repeatCustomers,
     repeatRate: totalCustomers > 0 ? round1(repeatCustomers / totalCustomers * 100) : 0,
     totalOrders: dedupedOrders.length,
     monthly, cohorts, timing, distribution, productRetention, productJourney,
     avgLtv, repeatLtv, oneTimeLtv, totalRevenue: Math.round(totalRevenue),
-    ltvByCohort, ltvDistribution,
+    ltvByCohort, ltvDistribution, spendGroups, orderGroups,
   };
 }
 

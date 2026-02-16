@@ -80,6 +80,7 @@ export default function Dashboard({ data, loading, onFilterChange }) {
   const [selectedProduct, setSelectedProduct] = useState('');
   const [timingPct, setTimingPct] = useState(false);
   const [ltvPct, setLtvPct] = useState(false);
+  const [groupPct, setGroupPct] = useState(false);
 
   const handleDateFrom = (v) => { setDateFrom(v); onFilterChange(v, dateTo, selectedProduct); };
   const handleDateTo = (v) => { setDateTo(v); onFilterChange(dateFrom, v, selectedProduct); };
@@ -96,6 +97,7 @@ export default function Dashboard({ data, loading, onFilterChange }) {
     { id: 'products', label: 'Produkty' },
     { id: 'trends', label: 'Trendy' },
     { id: 'ltv', label: 'LTV' },
+    { id: 'groups', label: 'Skupiny' },
   ];
 
   const matureCohorts = (d.cohorts || []).filter((_, i) => i < Math.max(d.cohorts.length - 3, 1));
@@ -598,6 +600,56 @@ export default function Dashboard({ data, loading, onFilterChange }) {
                   <YAxis tick={{ fill: C.dim, fontSize: 10 }} unit={ltvPct ? '%' : ''} />
                   <Tooltip content={<Tip fmt={v => ltvPct ? `${v}%` : `${v} zákazníkov`} />} />
                   <Bar dataKey={ltvPct ? 'pct' : 'count'} name={ltvPct ? '%' : 'Zákazníci'} fill={C.violet} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </>);
+        })()}
+
+        {tab === 'groups' && (() => {
+          return (<>
+            <select value={selectedProduct} onChange={e => handleProductChange(e.target.value)}
+              style={{ ...inputStyle, minWidth: 200, maxWidth: 320, cursor: 'pointer', marginBottom: 10 }}>
+              <option value="">Všetky produkty</option>
+              {products.map(p => <option key={p.name} value={p.name}>{p.name} ({p.count})</option>)}
+            </select>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <Section sub="Rozdelenie zákazníkov podľa celkovej životnej útraty">Skupiny podľa útraty</Section>
+              <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: 3, marginBottom: 14 }}>
+                {[{ key: false, label: 'Počet' }, { key: true, label: '%' }].map(o => (
+                  <button key={String(o.key)} onClick={() => setGroupPct(o.key)} style={{
+                    padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
+                    background: groupPct === o.key ? color : 'transparent',
+                    color: groupPct === o.key ? C.bg : C.dim,
+                  }}>{o.label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={d.spendGroups || []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="bucket" tick={{ fill: C.dim, fontSize: 10 }} />
+                  <YAxis tick={{ fill: C.dim, fontSize: 10 }} unit={groupPct ? '%' : ''} />
+                  <Tooltip content={<Tip fmt={v => groupPct ? `${v}%` : `${v} zákazníkov`} />} />
+                  <Bar dataKey={groupPct ? 'pct' : 'count'} name={groupPct ? '%' : 'Zákazníci'} fill={C.cyan} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <Section sub="Rozdelenie zákazníkov podľa počtu objednávok">Skupiny podľa objednávok</Section>
+            </div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={d.orderGroups || []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="bucket" tick={{ fill: C.dim, fontSize: 10 }} />
+                  <YAxis tick={{ fill: C.dim, fontSize: 10 }} unit={groupPct ? '%' : ''} />
+                  <Tooltip content={<Tip fmt={v => groupPct ? `${v}%` : `${v} zákazníkov`} />} />
+                  <Bar dataKey={groupPct ? 'pct' : 'count'} name={groupPct ? '%' : 'Zákazníci'} fill={C.violet} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
