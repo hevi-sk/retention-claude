@@ -72,14 +72,18 @@ function Tip({ active, payload, label, fmt }) {
 
 // ============ MAIN DASHBOARD ============
 
-export default function Dashboard({ data, loading, onDateChange }) {
+export default function Dashboard({ data, loading, onFilterChange }) {
   const [shop, setShop] = useState('All');
   const [tab, setTab] = useState('overview');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
+  const [selectedProduct, setSelectedProduct] = useState('');
+  const [timingPct, setTimingPct] = useState(false);
+  const [ltvPct, setLtvPct] = useState(false);
 
-  const handleDateFrom = (v) => { setDateFrom(v); onDateChange(v, dateTo); };
-  const handleDateTo = (v) => { setDateTo(v); onDateChange(dateFrom, v); };
+  const handleDateFrom = (v) => { setDateFrom(v); onFilterChange(v, dateTo, selectedProduct); };
+  const handleDateTo = (v) => { setDateTo(v); onFilterChange(dateFrom, v, selectedProduct); };
+  const handleProductChange = (v) => { setSelectedProduct(v); onFilterChange(dateFrom, dateTo, v); };
 
   const { shops, products, results } = data;
   const d = results[shop];
@@ -91,6 +95,7 @@ export default function Dashboard({ data, loading, onDateChange }) {
     { id: 'timing', label: 'Čas do 2. nákupu' },
     { id: 'products', label: 'Produkty' },
     { id: 'trends', label: 'Trendy' },
+    { id: 'ltv', label: 'LTV' },
   ];
 
   const matureCohorts = (d.cohorts || []).filter((_, i) => i < Math.max(d.cohorts.length - 3, 1));
@@ -193,7 +198,7 @@ export default function Dashboard({ data, loading, onDateChange }) {
             <KPI label="Repeat Rate" value={`${d.repeatRate}%`} sub={`${d.repeatCustomers?.toLocaleString()} z ${d.totalCustomers?.toLocaleString()}`} color={color} />
             <KPI label="Ø 90d repeat (zrelé)" value={`${avgR90.toFixed(1)}%`} sub="Priemer zrelých kohort" color={C.green} />
             <KPI label="Medián do 2. obj." value={`${d.timing.median}d`} sub={`P25: ${d.timing.p25}d · P75: ${d.timing.p75}d (n=${d.timing.n})`} color={C.amber} />
-            <KPI label="Celkové tržby" value={`€${(d.monthly.reduce((s, m) => s + m.revenue, 0) / 1000).toFixed(0)}k`} sub={`${d.totalOrders?.toLocaleString()} objednávok`} color={C.violet} />
+            <KPI label="Celkové tržby" value={`€${(d.monthly.reduce((s, m) => s + m.revenue, 0) / 1000000).toFixed(2)}M`} sub={`${d.totalOrders?.toLocaleString()} objednávok`} color={C.violet} />
             <KPI label="AOV" value={`€${d.totalOrders > 0 ? Math.round(d.monthly.reduce((s, m) => s + m.revenue, 0) / d.totalOrders) : 0}`} sub="Priem. hodnota objednávky" color={C.rose} />
           </div>
 
@@ -245,7 +250,33 @@ export default function Dashboard({ data, loading, onDateChange }) {
 
         {/* ===== COHORTS ===== */}
         {tab === 'cohorts' && (<>
-          <Section sub="Nové kohorty a ich repeat rate v 30/60/90 dňových oknách">Kohortová retenčná tabuľka</Section>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <Section sub="Nové kohorty a ich repeat rate v 30/60/90 dňových oknách">Kohortová retenčná tabuľka</Section>
+            <div style={{ marginBottom: 14 }}>
+              <select
+                value={selectedProduct}
+                onChange={e => handleProductChange(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  minWidth: 200,
+                  maxWidth: 320,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Všetky produkty</option>
+                {products.map(p => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} ({p.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {(d.cohorts || []).length === 0 ? (
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 40, textAlign: 'center', color: C.dim }}>
+              Žiadne kohorty pre zvolenú kombináciu filtrov
+            </div>
+          ) : (
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
               <thead>
@@ -268,6 +299,7 @@ export default function Dashboard({ data, loading, onDateChange }) {
               </tbody>
             </table>
           </div>
+          )}
 
           <Section sub="90-dňová kumulatívna repeat rate">90d repeat podľa kohorty</Section>
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
@@ -287,23 +319,57 @@ export default function Dashboard({ data, loading, onDateChange }) {
 
         {/* ===== TIMING ===== */}
         {tab === 'timing' && (<>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginTop: 6 }}>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap', marginBottom: 12 }}>
+            <div />
+            <div>
+              <select
+                value={selectedProduct}
+                onChange={e => handleProductChange(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  minWidth: 200,
+                  maxWidth: 320,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Všetky produkty</option>
+                {products.map(p => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} ({p.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
             <KPI label="Medián" value={`${d.timing.median} dní`} sub="Polovica repeat zákazníkov" color={C.cyan} />
             <KPI label="Priemer" value={`${d.timing.mean} dní`} sub="Stiahnutý outliermi" color={C.amber} />
             <KPI label="25. percentil" value={`${d.timing.p25} dní`} sub="Najrýchlejšia štvrtina" color={C.green} />
             <KPI label="75. percentil" value={`${d.timing.p75} dní`} sub="Tri štvrtiny do" color={C.violet} />
           </div>
 
-          <Section sub={`Distribúcia dní do 2. objednávky (n=${d.timing.n})`}>Čas do druhej objednávky</Section>
+          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <Section sub={`Distribúcia dní do 2. objednávky (n=${d.timing.n})`}>Čas do druhej objednávky</Section>
+            <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: 3, marginBottom: 14 }}>
+              {[{ key: false, label: 'Počet' }, { key: true, label: '%' }].map(o => (
+                <button key={String(o.key)} onClick={() => setTimingPct(o.key)} style={{
+                  padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                  fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
+                  background: timingPct === o.key ? color : 'transparent',
+                  color: timingPct === o.key ? C.bg : C.dim,
+                }}>{o.label}</button>
+              ))}
+            </div>
+          </div>
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
             {d.timing.n > 5 ? (
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={(d.distribution || []).filter(b => b.count > 0)}>
                   <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
                   <XAxis dataKey="bucket" tick={{ fill: C.dim, fontSize: 10 }} />
-                  <YAxis tick={{ fill: C.dim, fontSize: 10 }} />
-                  <Tooltip content={<Tip fmt={v => `${v} zákazníkov`} />} />
-                  <Bar dataKey="count" name="Zákazníci" fill={color} radius={[4, 4, 0, 0]} />
+                  <YAxis tick={{ fill: C.dim, fontSize: 10 }} unit={timingPct ? '%' : ''} />
+                  <Tooltip content={<Tip fmt={v => timingPct ? `${v}%` : `${v} zákazníkov`} />} />
+                  <Bar dataKey={timingPct ? 'pct' : 'count'} name={timingPct ? '%' : 'Zákazníci'} fill={color} radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -428,6 +494,115 @@ export default function Dashboard({ data, loading, onDateChange }) {
             </ResponsiveContainer>
           </div>
         </>)}
+
+        {/* ===== LTV ===== */}
+        {tab === 'ltv' && (() => {
+          const maxCohortLtv = Math.max(...(d.ltvByCohort || []).map(c => c.avgLtv), 1);
+          return (<>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+              <select
+                value={selectedProduct}
+                onChange={e => handleProductChange(e.target.value)}
+                style={{
+                  ...inputStyle,
+                  minWidth: 200,
+                  maxWidth: 320,
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="">Všetky produkty</option>
+                {products.map(p => (
+                  <option key={p.name} value={p.name}>
+                    {p.name} ({p.count})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+              <KPI label="Priemerné LTV" value={`€${d.avgLtv?.toLocaleString() || 0}`} sub={`${d.totalCustomers?.toLocaleString()} zákazníkov`} color={C.cyan} />
+              <KPI label="Celkové tržby" value={`€${((d.totalRevenue || 0) / 1000).toFixed(0)}k`} sub={`${d.totalOrders?.toLocaleString()} objednávok`} color={C.green} />
+              <KPI label="LTV repeat zákazníkov" value={`€${d.repeatLtv?.toLocaleString() || 0}`} sub={`${d.repeatCustomers?.toLocaleString()} repeat zákazníkov`} color={C.amber} />
+              <KPI label="LTV jednorazových" value={`€${d.oneTimeLtv?.toLocaleString() || 0}`} sub={`${((d.totalCustomers || 0) - (d.repeatCustomers || 0)).toLocaleString()} jednorazových`} color={C.violet} />
+            </div>
+
+            <Section sub="Priemerné celoživotné tržby na zákazníka podľa kohorty prvého nákupu">LTV podľa kohorty</Section>
+            {(d.ltvByCohort || []).length === 0 ? (
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 40, textAlign: 'center', color: C.dim }}>
+                Žiadne kohorty pre zvolenú kombináciu filtrov
+              </div>
+            ) : (
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20, overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <thead>
+                    <tr style={{ borderBottom: `2px solid ${C.border}` }}>
+                      {['Kohorta', 'Veľkosť', 'Priem. LTV (€)', 'Priem. obj.'].map((h, i) => (
+                        <th key={h} style={{ padding: '8px 10px', textAlign: i === 0 ? 'left' : 'center', color: C.dim, fontWeight: 600, fontSize: 10, textTransform: 'uppercase' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(d.ltvByCohort || []).map((c, i) => {
+                      const intensity = Math.min(c.avgLtv / maxCohortLtv, 1);
+                      return (
+                        <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
+                          <td style={{ padding: '8px 10px', fontWeight: 600, color: C.white }}>{c.cohort}</td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace" }}>{c.size.toLocaleString()}</td>
+                          <td style={{
+                            padding: '8px 10px', textAlign: 'center', fontSize: 12, fontWeight: 600,
+                            color: intensity > 0.4 ? C.white : C.cyan,
+                            background: `rgba(34,211,238,${0.05 + intensity * 0.5})`,
+                            fontFamily: "'JetBrains Mono', monospace",
+                          }}>
+                            €{c.avgLtv.toLocaleString()}
+                          </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center', fontFamily: "'JetBrains Mono', monospace" }}>{c.avgOrders}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            <Section sub="Priemerné LTV na zákazníka podľa mesiaca prvého nákupu">LTV trend podľa kohorty</Section>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={d.ltvByCohort || []}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="cohort" tick={{ fill: C.dim, fontSize: 10 }} />
+                  <YAxis tick={{ fill: C.dim, fontSize: 10 }} tickFormatter={v => `€${v}`} />
+                  <Tooltip content={<Tip fmt={v => `€${v.toLocaleString()}`} />} />
+                  <Bar dataKey="avgLtv" name="Priem. LTV" fill={color} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+              <Section sub={`Rozdelenie zákazníkov podľa celkovej útraty (n=${d.totalCustomers?.toLocaleString()})`}>Distribúcia LTV</Section>
+              <div style={{ display: 'flex', gap: 3, background: 'rgba(255,255,255,0.03)', borderRadius: 8, padding: 3, marginBottom: 14 }}>
+                {[{ key: false, label: 'Počet' }, { key: true, label: '%' }].map(o => (
+                  <button key={String(o.key)} onClick={() => setLtvPct(o.key)} style={{
+                    padding: '5px 12px', borderRadius: 6, border: 'none', cursor: 'pointer',
+                    fontSize: 11, fontWeight: 600, transition: 'all 0.15s',
+                    background: ltvPct === o.key ? color : 'transparent',
+                    color: ltvPct === o.key ? C.bg : C.dim,
+                  }}>{o.label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
+              <ResponsiveContainer width="100%" height={260}>
+                <BarChart data={(d.ltvDistribution || []).filter(b => b.count > 0)}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="bucket" tick={{ fill: C.dim, fontSize: 10 }} />
+                  <YAxis tick={{ fill: C.dim, fontSize: 10 }} unit={ltvPct ? '%' : ''} />
+                  <Tooltip content={<Tip fmt={v => ltvPct ? `${v}%` : `${v} zákazníkov`} />} />
+                  <Bar dataKey={ltvPct ? 'pct' : 'count'} name={ltvPct ? '%' : 'Zákazníci'} fill={C.violet} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </>);
+        })()}
 
         <div style={{ fontSize: 10, color: C.dim, textAlign: 'center', marginTop: 32 }}>
           StretchFit Retention Dashboard · Dáta: Google Sheets (Shopify export) · Auto-refresh každú hodinu

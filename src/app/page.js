@@ -8,11 +8,12 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchData = useCallback((from, to) => {
+  const fetchData = useCallback((from, to, product) => {
     setLoading(true);
     const params = new URLSearchParams();
     if (from) params.set('from', from);
     if (to) params.set('to', to);
+    if (product) params.set('product', product);
     const qs = params.toString();
     fetch(`/api/data${qs ? `?${qs}` : ''}`)
       .then(res => res.json())
@@ -54,5 +55,5 @@ export default function Home() {
     );
   }
 
-  return <Dashboard data={data} loading={loading} onDateChange={fetchData} />;
+  return <Dashboard data={data} loading={loading} onFilterChange={fetchData} />;
 }

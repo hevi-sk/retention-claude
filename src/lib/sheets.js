@@ -82,6 +82,32 @@ export async function fetchSheetData() {
   });
 }
 
+// Filter rows to only customers whose first order contained the given product
+export function filterRowsByProduct(rows, productName) {
+  const matchingCustomers = new Set();
+  for (const row of rows) {
+    const product = row['Product Title'] || '';
+    const orderIndex = parseInt(row['Customer Order Index']) || 0;
+    if (orderIndex === 1 && product === productName) {
+      matchingCustomers.add(row['Customer ID']);
+    }
+  }
+  return rows.filter(r => matchingCustomers.has(r['Customer ID']));
+}
+
+// Extract product list (with counts >= 20) from raw rows
+export function computeProductsList(rows) {
+  const productCounts = {};
+  for (const row of rows) {
+    const product = row['Product Title'] || '';
+    if (product) productCounts[product] = (productCounts[product] || 0) + 1;
+  }
+  return Object.entries(productCounts)
+    .filter(([_, count]) => count >= 20)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({ name, count }));
+}
+
 // Process raw rows into structured data
 export function processData(rows) {
   // Parse rows
@@ -97,7 +123,9 @@ export function processData(rows) {
 
     if (!customerId || !date) continue;
 
-    orders.push({ orderName, date, customerId, orderIndex, product, shop, totalSales });
+    // Use only positive sales (exclude refund line items) for revenue
+    const grossSales = totalSales > 0 ? totalSales : 0;
+    orders.push({ orderName, date, customerId, orderIndex, product, shop, totalSales: grossSales });
   }
 
   // Get unique shops
@@ -271,11 +299,78 @@ function computeMetrics(orders) {
   // Product journey (what do customers buy in 1st, 2nd, 3rd order)
   const productJourney = computeProductJourney(orders);
 
+  // === LTV calculations ===
+  const customerSpend = new Map();
+  for (const o of dedupedOrders) {
+    if (!customerSpend.has(o.customerId)) {
+      customerSpend.set(o.customerId, { total: 0, count: 0 });
+    }
+    const cs = customerSpend.get(o.customerId);
+    cs.total += o.totalSales;
+    cs.count += 1;
+  }
+
+  const totalRevenue = dedupedOrders.reduce((s, o) => s + o.totalSales, 0);
+  const avgLtv = totalCustomers > 0 ? Math.round(totalRevenue / totalCustomers) : 0;
+
+  let repeatTotal = 0, repeatCount = 0, oneTimeTotal = 0, oneTimeCount = 0;
+  for (const [custId, cs] of customerSpend) {
+    if (repeatCustomerIds.has(custId)) {
+      repeatTotal += cs.total;
+      repeatCount++;
+    } else {
+      oneTimeTotal += cs.total;
+      oneTimeCount++;
+    }
+  }
+  const repeatLtv = repeatCount > 0 ? Math.round(repeatTotal / repeatCount) : 0;
+  const oneTimeLtv = oneTimeCount > 0 ? Math.round(oneTimeTotal / oneTimeCount) : 0;
+
+  // LTV by cohort
+  const ltvByCohort = Array.from(cohortMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([cohortMonth, cohortOrders]) => {
+      const cohortCustIds = new Set(cohortOrders.map(o => o.customerId));
+      const size = cohortCustIds.size;
+      let cohortTotalSpend = 0, cohortTotalOrders = 0;
+      for (const custId of cohortCustIds) {
+        const cs = customerSpend.get(custId);
+        if (cs) { cohortTotalSpend += cs.total; cohortTotalOrders += cs.count; }
+      }
+      return {
+        cohort: formatMonth(cohortMonth),
+        size,
+        avgLtv: size > 0 ? Math.round(cohortTotalSpend / size) : 0,
+        avgOrders: size > 0 ? round1(cohortTotalOrders / size) : 0,
+      };
+    });
+
+  // LTV distribution
+  function getLtvBucket(total) {
+    if (total <= 50) return 0;
+    if (total <= 100) return 1;
+    if (total <= 200) return 2;
+    if (total <= 500) return 3;
+    return 4;
+  }
+  const ltvBucketLabels = ['€0–50', '€50–100', '€100–200', '€200–500', '€500+'];
+  const ltvBucketCounts = [0, 0, 0, 0, 0];
+  for (const [, cs] of customerSpend) {
+    ltvBucketCounts[getLtvBucket(cs.total)]++;
+  }
+  const ltvDistribution = ltvBucketLabels.map((label, i) => ({
+    bucket: label,
+    count: ltvBucketCounts[i],
+    pct: totalCustomers > 0 ? round1(ltvBucketCounts[i] / totalCustomers * 100) : 0,
+  }));
+
   return {
     totalCustomers, repeatCustomers,
     repeatRate: totalCustomers > 0 ? round1(repeatCustomers / totalCustomers * 100) : 0,
     totalOrders: dedupedOrders.length,
     monthly, cohorts, timing, distribution, productRetention, productJourney,
+    avgLtv, repeatLtv, oneTimeLtv, totalRevenue: Math.round(totalRevenue),
+    ltvByCohort, ltvDistribution,
   };
 }
 
